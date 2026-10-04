@@ -15,6 +15,7 @@ import {
   type ToolDiscoveryCache,
 } from "../tools/tool-discovery.js";
 import { resolveDefaultClaudeExecutable } from "../utils/claude-executable.js";
+import { strictSecurity } from "../utils/security.js";
 
 const RESOURCE_SCHEME = "claude-code-mcp";
 
@@ -438,12 +439,15 @@ export function registerResources(
           "CLAUDE_CODE_GIT_BASH_PATH is not set. Auto-detection exists, but explicit path is more reliable for GUI-launched MCP clients."
         );
       }
-      const diskResumeEnabled = process.env.CLAUDE_CODE_MCP_ALLOW_DISK_RESUME === "1";
+      const diskResumeEnabled =
+        !strictSecurity() && process.env.CLAUDE_CODE_MCP_ALLOW_DISK_RESUME === "1";
       const resumeSecretConfigured =
         typeof process.env.CLAUDE_CODE_MCP_RESUME_SECRET === "string" &&
         process.env.CLAUDE_CODE_MCP_RESUME_SECRET.trim() !== "";
       const runtimeToolStats = deps.sessionManager.getRuntimeToolStats();
-      const defaultClaudeExecutable = resolveDefaultClaudeExecutable();
+      const defaultClaudeExecutable = strictSecurity()
+        ? { source: "sdk-bundled", resolvedPath: undefined, command: undefined }
+        : resolveDefaultClaudeExecutable();
       const toolCatalogCount = deps.toolCache.getTools().length;
       const detectedMismatches: string[] = [];
       if (
@@ -456,6 +460,9 @@ export function registerResources(
       }
       const updatedAt = new Date().toISOString();
       const base = {
+        strictSecurity: strictSecurity(),
+        securityContract:
+          "Strict default requires allowed project roots; only approved Read/Write/Edit inputs. No OS sandbox or arbitrary-secret redaction guarantee. See docs/STRICT_SECURITY.md before enabling real queries.",
         transport: "stdio",
         samePlatformRequired: true,
         packageVersion: deps.version,

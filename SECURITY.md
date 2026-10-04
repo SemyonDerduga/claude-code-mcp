@@ -27,3 +27,10 @@ We aim to acknowledge reports within 48 hours and provide a fix or mitigation pl
 - Disk resume is disabled by default (`CLAUDE_CODE_MCP_ALLOW_DISK_RESUME=0`). If you set `CLAUDE_CODE_MCP_ALLOW_DISK_RESUME=1`, disk resume fallback also requires `CLAUDE_CODE_MCP_RESUME_SECRET` (default: unset) and a valid `resumeToken` from `claude_code`/`claude_code_reply`.
 - `claude_code_session` redacts sensitive fields (cwd, systemPrompt, agents, additionalDirectories) by default; use `includeSensitive=true` to include them
 - Sessions auto-expire after 30 minutes of inactivity
+
+# Strict bridge boundary
+
+See [STRICT_SECURITY.md](docs/STRICT_SECURITY.md) for the default execution
+policy and its limits. Parameter containment and known-pattern redaction do not
+replace OS filesystem/egress isolation or separately reviewed authentication.
+Legacy mode is an explicit compatibility escape hatch for trusted clients.

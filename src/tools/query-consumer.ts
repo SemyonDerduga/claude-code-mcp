@@ -1,4 +1,5 @@
 import { AbortError, query } from "@anthropic-ai/claude-agent-sdk";
+import { assertToolInput, strictSecurity } from "../utils/security.js";
 import type {
   CanUseTool,
   Options,
@@ -439,6 +440,11 @@ export function consumeQuery(params: ConsumeQueryParams): ConsumeQueryHandle {
     const sessionId = await getSessionId();
     const normalizedToolName = toolName.trim();
     const normalizedInput = normalizeToolInput(toolName, input, params.platform);
+    try {
+      assertToolInput(toolName, normalizedInput, params.options.cwd ?? "");
+    } catch {
+      return { behavior: "deny", message: "Server security policy denied this tool input" };
+    }
     const unsupportedPath = findUnsupportedPosixPathInToolInput(normalizedInput, params.platform);
     if (unsupportedPath) {
       return {
@@ -490,6 +496,7 @@ export function consumeQuery(params: ConsumeQueryParams): ConsumeQueryHandle {
       }
 
       if (
+        !strictSecurity() &&
         !options.blockedPath &&
         normalizedToolName !== "" &&
         allowedTools.includes(normalizedToolName)

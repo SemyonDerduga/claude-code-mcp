@@ -3,6 +3,7 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { strictSecurity } from "./utils/security.js";
 import { SessionManager } from "./session/manager.js";
 import { executeClaudeCode } from "./tools/claude-code.js";
 import { executeClaudeCodeReply } from "./tools/claude-code-reply.js";
@@ -20,6 +21,14 @@ import {
 
 declare const __PKG_VERSION__: string;
 const SERVER_VERSION = typeof __PKG_VERSION__ !== "undefined" ? __PKG_VERSION__ : "0.0.0-dev";
+
+function securityDescription(description: string): string {
+  return (
+    (strictSecurity()
+      ? "STRICT SECURITY: operator-configured project roots required. Default tools=[]; only explicit Read/Write/Edit are supported and require approval. Caller launch/config/env/MCP overrides, preapproval, persistent sessions and disk resume are disabled. This bridge is not an OS sandbox; redaction detects only known token patterns. "
+      : "") + description
+  );
+}
 
 export function createServerContext(serverCwd: string): {
   server: McpServer;
@@ -61,7 +70,9 @@ export function createServerContext(serverCwd: string): {
 
   const toolCache = new ToolDiscoveryCache(undefined, (tools) => {
     try {
-      claudeCodeToolRef.current?.update({ description: buildInternalToolsDescription(tools) });
+      claudeCodeToolRef.current?.update({
+        description: securityDescription(buildInternalToolsDescription(tools)),
+      });
       if (server.isConnected()) {
         server.sendToolListChanged();
       }
@@ -327,7 +338,7 @@ export function createServerContext(serverCwd: string): {
   claudeCodeToolRef.current = server.registerTool(
     "claude_code",
     {
-      description: buildInternalToolsDescription(toolCache.getTools()),
+      description: securityDescription(buildInternalToolsDescription(toolCache.getTools())),
       inputSchema: {
         prompt: z
           .string()
@@ -566,6 +577,7 @@ export function createServerContext(serverCwd: string): {
     "claude_code_check",
     {
       description:
+        "respond_user_input is not supported; use respond_permission for approvals. " +
         'Poll session state or answer a pending permission request.\n\nPOLLING FREQUENCY: Do NOT poll every turn. Claude Code tasks take minutes, not seconds.\n- "running": sleep at least 2 minutes between polls; increase for complex tasks. Do NOT high-frequency poll — it wastes tokens.\n- "waiting_permission": poll ~1s and respond quickly.\n- "idle"/"error"/"cancelled": stop polling.\n- Adapt interval based on task complexity and whether the previous poll returned new events.\n\nMain loop: call action=\'poll\', persist nextCursor, and use action=\'respond_permission\' for approvals.',
       inputSchema: {
         action: z

@@ -5,6 +5,7 @@
  * Usage: npx claude-code-mcp
  */
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { redactOutput, strictSecurity } from "./utils/security.js";
 import { createServerContext } from "./server.js";
 import { isBenignRuntimeError } from "./utils/runtime-errors.js";
 import { decideStdinShutdown } from "./utils/stdin-shutdown.js";
@@ -32,11 +33,16 @@ function summarizeSessions(ctx: ReturnType<typeof createServerContext>): {
 }
 
 async function main(): Promise<void> {
+  const originalError = console.error.bind(console);
+  console.error = (...args: unknown[]) => originalError(...args.map((arg) => redactOutput(arg)));
   const serverCwd = process.cwd();
   const ctx = createServerContext(serverCwd);
   const server = ctx.server;
   const sessionManager = ctx.sessionManager;
   const transport = new StdioServerTransport();
+  const originalSend = transport.send.bind(transport);
+  transport.send = (message, ...args) =>
+    originalSend(redactOutput(message) as typeof message, ...args);
 
   // Handle graceful shutdown (idempotent)
   let closing = false;
@@ -192,7 +198,7 @@ async function main(): Promise<void> {
 
   // Check Windows bash.exe availability and warn early
   checkWindowsBashAvailability();
-  checkDefaultClaudeExecutableAvailability();
+  if (!strictSecurity()) checkDefaultClaudeExecutableAvailability();
 
   await server.connect(transport);
   server.sendToolListChanged();

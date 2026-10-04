@@ -2,6 +2,7 @@ import type { SessionManager } from "../session/manager.js";
 import type { PermissionMode } from "../types.js";
 import { DEFAULT_SETTING_SOURCES } from "../types.js";
 import type { OptionSource } from "./build-options.js";
+import { strictSecurity } from "./security.js";
 
 export type SessionCreateParams = Parameters<SessionManager["create"]>[0];
 
@@ -44,7 +45,7 @@ export function toSessionCreateParams(input: {
     agentProgressSummaries: src.agentProgressSummaries,
     strictMcpConfig: src.strictMcpConfig,
     settings: src.settings,
-    settingSources: src.settingSources ?? DEFAULT_SETTING_SOURCES,
+    settingSources: strictSecurity() ? [] : (src.settingSources ?? DEFAULT_SETTING_SOURCES),
     debug: src.debug,
     debugFile: src.debugFile,
     env: src.env,

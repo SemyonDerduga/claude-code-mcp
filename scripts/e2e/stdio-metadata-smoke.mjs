@@ -29,10 +29,26 @@ async function main() {
     });
   }
 
-  const client = new Client({ name: "stdio-metadata-smoke", version: "0.0.0" }, { capabilities: {} });
+  const client = new Client(
+    { name: "stdio-metadata-smoke", version: "0.0.0" },
+    { capabilities: {} }
+  );
 
   try {
     await client.connect(transport);
+
+    // Invalid cwd is rejected before any SDK query. This exercises the real
+    // outgoing stdio error boundary using an artificial token-shaped canary.
+    const canary = "sk-ant-artificial-metadata-canary-123456";
+    const rejected = await client.callTool({
+      name: "claude_code",
+      arguments: {
+        prompt: "Never execute: invalid cwd fixture",
+        cwd: path.join(process.cwd(), canary),
+      },
+    });
+    assert(rejected.isError === true, "invalid cwd should fail before query");
+    assert(!JSON.stringify(rejected).includes(canary), "stdio error leaked token-shaped canary");
 
     const listed = await client.listTools();
     const toolNames = listed.tools.map((tool) => tool.name);
@@ -56,18 +72,26 @@ async function main() {
     const resourceUris = resources.resources.map((resource) => resource.uri);
     assert(resourceUris.includes("claude-code-mcp:///quickstart"), "quickstart resource missing");
     assert(resourceUris.includes("claude-code-mcp:///gotchas"), "gotchas resource missing");
-    assert(resourceUris.includes("claude-code-mcp:///compat-report"), "compat-report resource missing");
+    assert(
+      resourceUris.includes("claude-code-mcp:///compat-report"),
+      "compat-report resource missing"
+    );
 
     const quickstartText = getTextContent(
       await client.readResource({ uri: "claude-code-mcp:///quickstart" })
     );
-    const gotchasText = getTextContent(await client.readResource({ uri: "claude-code-mcp:///gotchas" }));
+    const gotchasText = getTextContent(
+      await client.readResource({ uri: "claude-code-mcp:///gotchas" })
+    );
     const compatText = getTextContent(
       await client.readResource({ uri: "claude-code-mcp:///compat-report" })
     );
     const compat = JSON.parse(compatText || "{}");
 
-    assert(quickstartText.includes("Persist these client-side"), "quickstart missing stored-state guidance");
+    assert(
+      quickstartText.includes("Persist these client-side"),
+      "quickstart missing stored-state guidance"
+    );
     assert(quickstartText.includes("nextCursor"), "quickstart missing nextCursor guidance");
     assert(
       quickstartText.includes("respond_permission"),
@@ -77,8 +101,8 @@ async function main() {
     assert(gotchasText.includes("Remedy:"), "gotchas missing remedy guidance");
     assert(Array.isArray(compat.guidance), "compat-report guidance missing");
     assert(
-      compat.guidance.some((item) =>
-        typeof item === "string" && item.includes("README-level documentation is visible")
+      compat.guidance.some(
+        (item) => typeof item === "string" && item.includes("README-level documentation is visible")
       ),
       "compat-report missing model-visibility guidance"
     );
@@ -104,6 +128,8 @@ async function main() {
 }
 
 main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+  process.stderr.write(
+    `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`
+  );
   process.exitCode = 1;
 });

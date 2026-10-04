@@ -34,6 +34,7 @@ import type { OptionSource } from "../utils/build-options.js";
 import { toSessionCreateParams } from "../utils/session-create.js";
 import { normalizeWindowsPathLike } from "../utils/normalize-windows-path.js";
 import { getDefaultClaudeExecutablePath } from "../utils/claude-executable.js";
+import { strictSecurity } from "../utils/security.js";
 
 /** Disk resume fallback configuration — only used when the in-memory session is missing. */
 export interface DiskResumeConfig {
@@ -197,7 +198,8 @@ export async function executeClaudeCodeReply(
       };
     }
 
-    const allowDiskResume = process.env.CLAUDE_CODE_MCP_ALLOW_DISK_RESUME === "1";
+    const allowDiskResume =
+      !strictSecurity() && process.env.CLAUDE_CODE_MCP_ALLOW_DISK_RESUME === "1";
     if (!allowDiskResume) {
       return {
         sessionId: input.sessionId,
@@ -367,7 +369,8 @@ export async function executeClaudeCodeReply(
   const options = buildOptions(session);
   options.cwd = normalizedCwd;
   const resolvedDefaultExecutable =
-    options.pathToClaudeCodeExecutable ?? getDefaultClaudeExecutablePath();
+    options.pathToClaudeCodeExecutable ??
+    (strictSecurity() ? undefined : getDefaultClaudeExecutablePath());
   if (resolvedDefaultExecutable !== undefined) {
     options.pathToClaudeCodeExecutable = resolvedDefaultExecutable;
   }

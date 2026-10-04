@@ -673,3 +673,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 - [Security Policy](SECURITY.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Third-party Notices](NOTICE.md)
+
+# Security defaults
+
+Session execution now defaults to strict mode and requires operator-configured
+project roots. Caller launch overrides, preapproved tools, persistent sessions
+and extra MCP servers are disabled. See [the strict security contract](docs/STRICT_SECURITY.md)
+for the migration switch, supported file tools, redaction limits and the
+separate OS isolation/authentication requirements before enabling real queries.

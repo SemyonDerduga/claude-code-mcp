@@ -6,6 +6,7 @@
  * a newly-added Options field only needs to be wired once.
  */
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import { spawn } from "node:child_process";
 import type {
   AgentDefinition,
   EffortLevel,
@@ -21,6 +22,12 @@ import type {
 } from "../types.js";
 import { DEFAULT_SETTING_SOURCES } from "../types.js";
 import { normalizeWindowsPathArray, normalizeWindowsPathLike } from "./normalize-windows-path.js";
+import {
+  assertRequestOptions,
+  assertToolInput,
+  safeEnvironment,
+  strictSecurity,
+} from "./security.js";
 
 /** Superset of fields that any of the three call-sites may provide. */
 export interface OptionSource {
@@ -66,6 +73,7 @@ export interface OptionSource {
  * SDK defaults are preserved for omitted fields.
  */
 export function buildOptions(src: OptionSource): Partial<Options> {
+  assertRequestOptions(src);
   const opts: Partial<Options> = { cwd: normalizeWindowsPathLike(src.cwd) };
 
   if (src.allowedTools !== undefined) opts.allowedTools = src.allowedTools;
@@ -104,7 +112,57 @@ export function buildOptions(src: OptionSource): Partial<Options> {
   else opts.settingSources = DEFAULT_SETTING_SOURCES;
   if (src.debug !== undefined) opts.debug = src.debug;
   if (src.debugFile !== undefined) opts.debugFile = normalizeWindowsPathLike(src.debugFile);
-  if (src.env !== undefined) opts.env = { ...process.env, ...src.env };
+  opts.env = { ...safeEnvironment(), ...src.env };
+  if (strictSecurity()) {
+    opts.env = safeEnvironment();
+    opts.allowedTools = [];
+    opts.tools = src.tools ?? [];
+    opts.persistSession = false;
+    opts.settingSources = [];
+    opts.strictMcpConfig = true;
+    opts.mcpServers = {};
+    opts.debug = false;
+    // The bundled SDK executable is pinned with the dependency. No PATH lookup.
+    opts.pathToClaudeCodeExecutable = undefined;
+    opts.stderr = () => {}; // No raw child diagnostics on the bridge's stderr.
+    opts.executable = "node";
+    // A sanitized env has no PATH. Use this bridge's fixed Node runtime rather
+    // than looking up a runtime in a caller-controlled project directory.
+    opts.spawnClaudeCodeProcess = (options) => {
+      if (options.command !== "node") throw new Error("Security policy: unexpected runtime");
+      return spawn(process.execPath, options.args, {
+        cwd: options.cwd,
+        env: options.env,
+        signal: options.signal,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    };
+    opts.hooks = {
+      PreToolUse: [
+        {
+          hooks: [
+            async (input) => {
+              if (input.hook_event_name !== "PreToolUse") return {};
+              try {
+                assertToolInput(input.tool_name, input.tool_input, src.cwd);
+                return {
+                  hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "ask" },
+                };
+              } catch {
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: "PreToolUse",
+                    permissionDecision: "deny",
+                    permissionDecisionReason: "Server security policy denied this tool input",
+                  },
+                };
+              }
+            },
+          ],
+        },
+      ],
+    };
+  }
 
   return opts;
 }

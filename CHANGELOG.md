@@ -202,3 +202,14 @@
 - Session cancellation via AbortController
 - Auto-cleanup for idle (30min) and stuck running (4h) sessions
 - Security: bypassPermissions disabled by default
+
+# Unreleased security hardening
+
+- Default to strict server-controlled roots and a minimal child environment.
+- Reject caller launch/config overrides and preapproval; constrain supported
+  file tools with pre-tool checks and permission-input revalidation.
+- Disable strict-mode persistence/debug/disk resume and redact known secret
+  forms at the outgoing stdio boundary. Document incomplete redaction and OS
+  isolation limits and the explicit legacy migration mode.
+- Refresh the lockfile using official npm advisory remediation, with lifecycle
+  scripts disabled and unchanged direct runtime dependency versions.

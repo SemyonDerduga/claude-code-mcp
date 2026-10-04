@@ -714,7 +714,19 @@ export class SessionManager {
         normalizedUpdatedInput,
         this.platform
       );
-      if (unsupportedPath) {
+      let policyDenied = false;
+      try {
+        assertToolInput(pending.record.toolName, normalizedUpdatedInput, info.cwd);
+      } catch {
+        policyDenied = true;
+      }
+      if (policyDenied) {
+        finalResult = {
+          behavior: "deny",
+          message: "Server security policy denied the permission input",
+          interrupt: false,
+        };
+      } else if (unsupportedPath) {
         finalResult = {
           behavior: "deny",
           message: `Tool '${pending.record.toolName}' attempted to allow an unsupported POSIX path '${
@@ -1110,3 +1122,4 @@ export class SessionManager {
     this.drainingSessions.set(sessionId, current - 1);
   }
 }
+import { assertToolInput } from "../utils/security.js";
