@@ -198,7 +198,7 @@ export async function executeClaudeCode(
       abortController.abort()
     );
 
-    const resumeSecret = getResumeSecret();
+    const resumeSecret = strictSecurity() ? undefined : getResumeSecret();
     return {
       sessionId,
       status: "running",

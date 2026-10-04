@@ -442,7 +442,7 @@ export function createServerContext(serverCwd: string): {
         sessionId: z
           .string()
           .describe(
-            "Session ID from claude_code or an earlier claude_code_reply. Prefer this over starting a fresh claude_code session. Reply works only for persistent sessions, or with diskResumeConfig when disk resume fallback is enabled."
+            "Session ID from claude_code or an earlier claude_code_reply. Strict mode replies reuse the live in-memory streaming process; continuation=expired requires a new session. Legacy mode uses persistent sessions/resume."
           ),
         prompt: z.string().describe("Follow-up prompt for the existing session."),
         forkSession: z.boolean().optional().describe("Default: false"),

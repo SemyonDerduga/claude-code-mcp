@@ -12,7 +12,8 @@ npm install
 
 ### Local Environment Requirements
 
-- Node.js `>=18` (Node 20/22 recommended for local development)
+- Development, tests and CI: Node.js `^20.19.0 || ^22.12.0 || >=24.0.0` (Node 22.12+ recommended). The locked Vite/Vitest development tooling does not support Node 18 or Node 21/23. `package.json` declares this separate `devEngines.runtime` contract.
+- Published runtime: package `engines.node` remains `>=18`; runtime compatibility is distinct from development tooling requirements. The local hardening checks ran Node 26.7.0; Node 18 runtime compatibility is not claimed as locally tested.
 - npm (bundled with Node)
 - Windows contributors: install **Git for Windows** (`bash.exe`) for Claude Code CLI compatibility
 - Optional: set `CLAUDE_CODE_GIT_BASH_PATH` explicitly when testing MCP clients launched outside your terminal environment

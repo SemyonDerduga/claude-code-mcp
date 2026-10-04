@@ -20,9 +20,21 @@ Caller executable, environment, settings, subagent, sandbox and tool-config
 overrides are rejected. The pinned SDK-bundled executable is used without PATH
 discovery. Settings sources are empty and MCP configuration is explicitly empty
 and strict. Debug logging, disk persistence/checkpoints and disk resume are
-disabled. No HMAC secret is needed. In-memory session lifecycle remains managed
-by the bridge; the existing reply API's non-persistent-session restriction still
-applies. Do not expect durable conversations from this strict contract.
+disabled. No HMAC secret is needed. Strict sessions use the official SDK's
+streaming input (`query({prompt: AsyncIterable<SDKUserMessage>})`) with one live
+process and a bounded one-message input slot. After completion, `claude_code_reply`
+sends a prompt to that same process; the session reports `persistSession:false`
+and `continuation:live`. Replies keep the initial options; forks and option
+overrides require a new session. Concurrent replies fail as busy.
+
+Interrupt stops the current turn while keeping the process alive; another reply
+is accepted after its terminal result. Cancel, delete, TTL expiry and server
+shutdown close the live process/input queue. Normal process exit or any fatal or
+transient stream failure sets `continuation:expired`: start a new session. No
+automatic retry, reconstruction, disk history or hidden resume is attempted.
+Strict sessions do not survive process/server restarts. Long-lived idle sessions
+consume one process until their existing TTL expires. Legacy disk-persistent
+resume behavior remains an explicitly unsafe migration option.
 
 The child receives only LANG, LC_ALL, TZ, SYSTEMROOT and WINDIR if present.
 HOME, PATH, credentials, proxies and Node injection variables are not inherited.

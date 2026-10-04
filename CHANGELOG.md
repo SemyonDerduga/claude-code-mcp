@@ -213,3 +213,8 @@
   isolation limits and the explicit legacy migration mode.
 - Refresh the lockfile using official npm advisory remediation, with lifecycle
   scripts disabled and unchanged direct runtime dependency versions.
+- Keep strict multi-turn conversations in one long-lived streaming-input query,
+  without disk resume or transient process retries. Expose live/expired
+  continuation state and effective persistence metadata; clean up idle handles.
+- Separate Node >=18 runtime engines from supported development/CI Node versions
+  required by the remediated Vitest/Vite lockfile.

@@ -79,6 +79,7 @@ export const DEFAULT_SETTING_SOURCES: SettingSource[] = ["user", "project", "loc
 
 /** Session metadata stored by the session manager */
 export interface SessionInfo {
+  continuation?: "live" | "expired";
   sessionId: string;
   status: SessionStatus;
   createdAt: string;
@@ -147,6 +148,7 @@ export interface SessionInfo {
 
 /** Session metadata safe to return by default (redacts paths and prompts) */
 export interface PublicSessionInfo {
+  continuation?: "live" | "expired";
   sessionId: string;
   status: SessionStatus;
   createdAt: string;

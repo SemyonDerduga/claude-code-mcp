@@ -1,5 +1,6 @@
 import { AbortError, query } from "@anthropic-ai/claude-agent-sdk";
 import { assertToolInput, strictSecurity } from "../utils/security.js";
+import { LiveInput, registerLiveSession, removeLiveSession } from "../utils/live-session.js";
 import type {
   CanUseTool,
   Options,
@@ -407,6 +408,13 @@ function messageToEvent(msg: SDKMessage): { type: "output" | "progress"; data: u
 }
 
 export function consumeQuery(params: ConsumeQueryParams): ConsumeQueryHandle {
+  const live = strictSecurity();
+  if (live && params.mode !== "start")
+    throw new Error("Strict sessions cannot resume from disk; start a new session");
+  const inputQueue = live ? new LiveInput() : undefined;
+  inputQueue?.send(params.prompt, "");
+  let liveEnded = false;
+  let streamReceivedResult = false;
   let resolveSessionId!: (id: string) => void;
   let rejectSessionId!: (err: Error) => void;
   const sdkSessionIdPromise = new Promise<string>((resolve, reject) => {
@@ -587,7 +595,7 @@ export function consumeQuery(params: ConsumeQueryParams): ConsumeQueryHandle {
 
   const startQuery = (opts: Partial<Options>): QueryLike =>
     query({
-      prompt: params.prompt,
+      prompt: inputQueue ?? params.prompt,
       options: opts,
     }) as unknown as QueryLike;
 
@@ -598,6 +606,7 @@ export function consumeQuery(params: ConsumeQueryParams): ConsumeQueryHandle {
   let activeQuery: QueryLike = startQuery(options);
 
   const close = (): void => {
+    inputQueue?.close();
     try {
       activeQuery.close?.();
     } finally {
@@ -614,6 +623,21 @@ export function consumeQuery(params: ConsumeQueryParams): ConsumeQueryHandle {
       // ignore interrupt errors
     }
   };
+
+  params.abortController.signal.addEventListener(
+    "abort",
+    () => {
+      inputQueue?.close();
+      if (live) {
+        try {
+          activeQuery.close?.();
+        } catch {
+          /* already closed */
+        }
+      }
+    },
+    { once: true }
+  );
 
   const done = (async (): Promise<void> => {
     const preInit: SDKMessage[] = [];
@@ -635,7 +659,7 @@ export function consumeQuery(params: ConsumeQueryParams): ConsumeQueryHandle {
 
     // Outer loop: retries on transient errors (C1 fix)
     while (true) {
-      let streamReceivedResult = false;
+      streamReceivedResult = false;
       try {
         for await (const message of currentStream) {
           if (isSystemInitMessage(message)) {
@@ -649,6 +673,23 @@ export function consumeQuery(params: ConsumeQueryParams): ConsumeQueryHandle {
             });
 
             activeSessionId = message.session_id;
+            if (live) {
+              params.sessionManager.update(activeSessionId, {
+                continuation: "live",
+                persistSession: false,
+              });
+              registerLiveSession(params.sessionManager, activeSessionId, {
+                abortController: params.abortController,
+                close,
+                interrupt,
+                send: (prompt) => {
+                  if (liveEnded || params.abortController.signal.aborted)
+                    throw new Error("In-memory session expired; start a new session");
+                  streamReceivedResult = false;
+                  inputQueue!.send(prompt, activeSessionId);
+                },
+              });
+            }
             if (!sessionIdResolved && shouldWaitForInit) {
               sessionIdResolved = true;
               resolveSessionId(activeSessionId);
@@ -729,8 +770,8 @@ export function consumeQuery(params: ConsumeQueryParams): ConsumeQueryHandle {
                 totalTurns: sessionTotalTurns,
                 totalCostUsd: sessionTotalCostUsd,
                 fastModeState: agentResult.fastModeState,
-                abortController: undefined,
-                queryInterrupt: undefined,
+                abortController: live ? params.abortController : undefined,
+                queryInterrupt: live ? interrupt : undefined,
               });
             } else if (current) {
               params.sessionManager.update(sessionId, {
@@ -817,7 +858,7 @@ export function consumeQuery(params: ConsumeQueryParams): ConsumeQueryHandle {
 
         // If a result was already delivered, ignore trailing stream errors so that
         // post-result events (e.g. prompt_suggestion) don't turn the session into error.
-        if (streamReceivedResult) {
+        if (streamReceivedResult && !live) {
           return;
         }
 
@@ -825,7 +866,7 @@ export function consumeQuery(params: ConsumeQueryParams): ConsumeQueryHandle {
         const sessionId = activeSessionId;
 
         // C1: transient errors → resume retry with exponential backoff
-        if (errClass === "transient" && retryCount < MAX_TRANSIENT_RETRIES) {
+        if (!live && errClass === "transient" && retryCount < MAX_TRANSIENT_RETRIES) {
           retryCount++;
           const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, retryCount - 1);
           params.sessionManager.pushEvent(sessionId, {
@@ -913,7 +954,43 @@ export function consumeQuery(params: ConsumeQueryParams): ConsumeQueryHandle {
         if (initTimeoutId) clearTimeout(initTimeoutId);
       }
     }
-  })();
+  })().finally(() => {
+    if (live) {
+      liveEnded = true;
+      inputQueue?.close();
+      try {
+        activeQuery.close?.();
+      } catch {
+        /* best-effort closed transport cleanup */
+      }
+      removeLiveSession(params.sessionManager, activeSessionId);
+      if (activeSessionId) {
+        params.sessionManager.finishAllPending(
+          activeSessionId,
+          {
+            behavior: "deny",
+            message: "In-memory session expired; start a new session",
+            interrupt: false,
+          },
+          "cleanup"
+        );
+        params.sessionManager.update(activeSessionId, {
+          continuation: "expired",
+          abortController: undefined,
+          queryInterrupt: undefined,
+        });
+        params.sessionManager.pushEvent(activeSessionId, {
+          type: "progress",
+          data: {
+            type: "session_expired",
+            message:
+              "In-memory process ended; start a new session. No disk resume or automatic retry.",
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+  });
 
   return { sdkSessionIdPromise, done, close, interrupt };
 }

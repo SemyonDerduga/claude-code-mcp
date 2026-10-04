@@ -379,7 +379,7 @@ export class SessionManager {
         // ignore interrupt errors
       }
     }
-    if (info.abortController) {
+    if (info.abortController && !getLiveSession(this, sessionId)) {
       info.abortController.abort();
     }
 
@@ -398,6 +398,7 @@ export class SessionManager {
 
   delete(sessionId: string): boolean {
     if (this.destroyed) return false;
+    getLiveSession(this, sessionId)?.close();
     this.finishAllPending(
       sessionId,
       { behavior: "deny", message: "Session deleted", interrupt: true },
@@ -848,6 +849,7 @@ export class SessionManager {
         );
         // Invalid timestamp — remove the session
         this.drainingSessions.delete(id);
+        getLiveSession(this, id)?.close();
         this.sessions.delete(id);
         this.runtime.delete(id);
       } else if (info.status === "running" && now - lastActive > this.runningSessionMaxMs) {
@@ -889,6 +891,7 @@ export class SessionManager {
         );
         // Deleting current entries during Map iteration is safe in JavaScript.
         this.drainingSessions.delete(id);
+        getLiveSession(this, id)?.close();
         this.sessions.delete(id);
         this.runtime.delete(id);
       }
@@ -953,10 +956,7 @@ export class SessionManager {
       );
       // M6 fix: explicitly abort any session that has an active consumer,
       // regardless of whether it is "running" or "waiting_permission".
-      if (
-        (info.status === "running" || info.status === "waiting_permission") &&
-        info.abortController
-      ) {
+      if (info.abortController) {
         info.abortController.abort();
       }
       info.queryInterrupt = undefined;
@@ -1123,3 +1123,4 @@ export class SessionManager {
   }
 }
 import { assertToolInput } from "../utils/security.js";
+import { getLiveSession } from "../utils/live-session.js";

@@ -681,3 +681,9 @@ project roots. Caller launch overrides, preapproved tools, persistent sessions
 and extra MCP servers are disabled. See [the strict security contract](docs/STRICT_SECURITY.md)
 for the migration switch, supported file tools, redaction limits and the
 separate OS isolation/authentication requirements before enabling real queries.
+
+Strict multi-turn replies keep one live SDK streaming process with no disk
+history. After process exit the session expires and requires a new start;
+interrupt keeps the process alive, while cancel closes it. Runtime requires
+Node >=18; cloned-source development/test tooling requires
+`^20.19.0 || ^22.12.0 || >=24.0.0` as declared in `devEngines` and CI.

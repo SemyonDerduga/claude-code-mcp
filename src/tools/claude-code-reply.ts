@@ -35,6 +35,7 @@ import { toSessionCreateParams } from "../utils/session-create.js";
 import { normalizeWindowsPathLike } from "../utils/normalize-windows-path.js";
 import { getDefaultClaudeExecutablePath } from "../utils/claude-executable.js";
 import { strictSecurity } from "../utils/security.js";
+import { getLiveSession } from "../utils/live-session.js";
 
 /** Disk resume fallback configuration — only used when the in-memory session is missing. */
 export interface DiskResumeConfig {
@@ -189,6 +190,62 @@ export async function executeClaudeCodeReply(
   const sessionInitTimeoutMs = input.sessionInitTimeoutMs ?? 10_000;
 
   const existing = sessionManager.get(input.sessionId);
+  if (strictSecurity()) {
+    if (
+      input.forkSession ||
+      input.diskResumeConfig ||
+      input.effort !== undefined ||
+      input.thinking !== undefined ||
+      input.permissionRequestTimeoutMs !== undefined ||
+      input.sessionInitTimeoutMs !== undefined
+    ) {
+      return {
+        sessionId: input.sessionId,
+        status: "error",
+        error:
+          "Strict in-memory replies accept a prompt only; start a new session to change options",
+      };
+    }
+    if (requestSignal?.aborted)
+      return { sessionId: input.sessionId, status: "error", error: "Reply request cancelled" };
+    const live = getLiveSession(sessionManager, input.sessionId);
+    if (
+      !existing ||
+      !live ||
+      existing.continuation !== "live" ||
+      live.abortController.signal.aborted
+    ) {
+      return {
+        sessionId: input.sessionId,
+        status: "error",
+        error: "In-memory session expired; start a new session. Disk resume is disabled",
+      };
+    }
+    const acquired = sessionManager.tryAcquire(
+      input.sessionId,
+      existing.status,
+      live.abortController
+    );
+    if (!acquired)
+      return { sessionId: input.sessionId, status: "error", error: "Session is busy or cancelled" };
+    sessionManager.update(input.sessionId, { queryInterrupt: live.interrupt });
+    try {
+      live.send(input.prompt);
+      return {
+        sessionId: input.sessionId,
+        status: "running",
+        pollInterval: DEFAULT_POLL_INTERVAL_RUNNING_MS,
+      };
+    } catch {
+      sessionManager.update(input.sessionId, { continuation: "expired", status: "error" });
+      live.close();
+      return {
+        sessionId: input.sessionId,
+        status: "error",
+        error: "In-memory session expired; start a new session",
+      };
+    }
+  }
   if (!existing) {
     if (!sessionManager.hasCapacityFor(1)) {
       return {
